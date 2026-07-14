@@ -10,7 +10,7 @@ VLC-style interactive zoom for IINA. Magnify the video and pan around it with a 
 - Scroll over the navigator to zoom
 - Toolbar with zoom in/out, live zoom factor, reset, and close
 - Clicks outside the navigator pass through to the video as normal
-- Zoom resets automatically when a new file loads
+- Zoom level and position persist per video file — reopening a file restores exactly where you were, even after quitting IINA; unzoomed files start at 1×
 
 Zooming drives mpv's `video-zoom` / `video-pan-x` / `video-pan-y` properties, so it composes with IINA's native pinch-to-zoom.
 

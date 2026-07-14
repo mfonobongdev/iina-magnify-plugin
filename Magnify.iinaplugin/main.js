@@ -1,4 +1,4 @@
-const { core, mpv, input, event, overlay, menu } = iina;
+const { core, mpv, input, event, overlay, menu, preferences } = iina;
 
 // Zoom is mpv's video-zoom: log2 of the scale factor (0 = 1x, 1 = 2x, ...).
 const ZOOM_STEP = 0.25;
@@ -9,6 +9,39 @@ let panX = 0; // mpv video-pan-x/y, fraction of the scaled video size
 let panY = 0;
 let minimapVisible = false;
 let aspect = 16 / 9;
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+// Zoom/pan is saved per file URL and restored when the file is reopened.
+
+function getAllStates() {
+  try {
+    return JSON.parse(preferences.get("zoomStates") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+let saveTimer = null;
+
+// Debounced: apply() fires on every mousemove while dragging the navigator,
+// and each sync() is a plist write to disk.
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const key = core.status.url;
+    if (!key) return;
+    const all = getAllStates();
+    if (zoom === 0) {
+      delete all[key];
+    } else {
+      all[key] = { zoom, panX, panY };
+    }
+    preferences.set("zoomStates", JSON.stringify(all));
+    // set() only updates IINA's in-memory store; sync() writes it to disk.
+    preferences.sync();
+  }, 500);
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +62,7 @@ function apply() {
   mpv.set("video-pan-x", panX);
   mpv.set("video-pan-y", panY);
   pushState();
+  scheduleSave();
 }
 
 function pushState() {
@@ -141,10 +175,11 @@ event.on("iina.plugin-overlay-loaded", () => {
 
 event.on("iina.file-loaded", () => {
   updateAspect();
-  // A new file has its own framing; start it unzoomed.
-  zoom = 0;
-  panX = 0;
-  panY = 0;
-  minimapVisible = false;
+  // Restore this file's saved zoom/pan; otherwise start unzoomed.
+  const saved = getAllStates()[core.status.url];
+  zoom = saved ? saved.zoom : 0;
+  panX = saved ? saved.panX : 0;
+  panY = saved ? saved.panY : 0;
+  minimapVisible = zoom > 0;
   apply();
 });
