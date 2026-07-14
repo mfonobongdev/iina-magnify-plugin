@@ -1,7 +1,7 @@
 {
   "name": "Magnify",
   "identifier": "com.mfonobongdev.iina.magnify",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "Mfonobong Etuk",
     "url": "https://github.com/mfonobongdev"
@@ -9,5 +9,5 @@
   "entry": "main.js",
   "permissions": ["show-osd", "video-overlay"],
   "ghRepo": "mfonobongdev/iina-magnify-plugin",
-  "ghVersion": 1
+  "ghVersion": 2
 }

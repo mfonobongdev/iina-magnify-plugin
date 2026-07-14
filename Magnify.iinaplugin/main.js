@@ -1,7 +1,7 @@
 const { core, mpv, input, event, overlay, menu } = iina;
 
 // Zoom is mpv's video-zoom: log2 of the scale factor (0 = 1x, 1 = 2x, ...).
-const ZOOM_STEP = 0.5;
+const ZOOM_STEP = 0.25;
 const MAX_ZOOM = 4; // 16x
 
 let zoom = 0;
@@ -43,11 +43,15 @@ function pushState() {
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
-function zoomBy(delta) {
-  zoom = Math.min(MAX_ZOOM, Math.max(0, zoom + delta));
+function zoomTo(z) {
+  zoom = Math.min(MAX_ZOOM, Math.max(0, z));
   if (zoom > 0) minimapVisible = true;
   apply();
   core.osd(`Zoom: ${scale().toFixed(1)}×`);
+}
+
+function zoomBy(delta) {
+  zoomTo(zoom + delta);
 }
 
 // u/v: viewport center in normalized video coordinates [0, 1].
@@ -124,6 +128,7 @@ try {
 event.on("iina.plugin-overlay-loaded", () => {
   overlay.setClickable(true);
   overlay.onMessage("zoom", ({ delta }) => zoomBy(delta));
+  overlay.onMessage("zoomTo", ({ zoom: z }) => zoomTo(z));
   overlay.onMessage("pan", ({ u, v }) => panTo(u, v));
   overlay.onMessage("reset", () => reset());
   overlay.onMessage("close", () => {
