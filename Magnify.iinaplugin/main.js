@@ -7,11 +7,12 @@ const MAX_ZOOM = 4; // 16x
 let zoom = 0;
 let panX = 0; // mpv video-pan-x/y, fraction of the scaled video size
 let panY = 0;
+let rotation = 0;
 let minimapVisible = false;
 let aspect = 16 / 9;
+let switchedThisWindowToCopyBack = false;
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
-// Zoom/pan is saved per file URL and restored when the file is reopened.
 
 function getAllStates() {
   try {
@@ -32,10 +33,10 @@ function scheduleSave() {
     const key = core.status.url;
     if (!key) return;
     const all = getAllStates();
-    if (zoom === 0) {
+    if (zoom === 0 && rotation === 0) {
       delete all[key];
     } else {
-      all[key] = { zoom, panX, panY };
+      all[key] = { zoom, panX, panY, rotation };
     }
     preferences.set("zoomStates", JSON.stringify(all));
     // set() only updates IINA's in-memory store; sync() writes it to disk.
@@ -70,9 +71,63 @@ function pushState() {
     zoom,
     panX,
     panY,
+    rotation,
     visible: minimapVisible,
     aspect,
   });
+}
+
+function clockwiseDegreesFromSignedSlider(signedDegrees) {
+  return ((signedDegrees % 360) + 360) % 360;
+}
+
+function signedSliderDegreesFromClockwise(clockwiseDegrees) {
+  return clockwiseDegrees > 180 ? clockwiseDegrees - 360 : clockwiseDegrees;
+}
+
+function clampRotationToSliderRange(degrees) {
+  return Math.min(180, Math.max(-180, Math.round(degrees)));
+}
+
+function keepCopyBackDecodingForOffAxisAngles() {
+  if (switchedThisWindowToCopyBack) return false;
+  const clockwiseDegrees = clockwiseDegreesFromSignedSlider(rotation);
+  const angleIsMultipleOfNinety = clockwiseDegrees % 90 === 0;
+  if (angleIsMultipleOfNinety) return false;
+  const hwdec = mpv.getString("hwdec") || "";
+  const canRotateBySingleDegrees = hwdec === "no" || hwdec.includes("copy");
+  if (canRotateBySingleDegrees) return false;
+  mpv.set("hwdec", "auto-copy");
+  switchedThisWindowToCopyBack = true;
+  return true;
+}
+
+function addRotationOnTopOfFileMetadata() {
+  mpv.set("video-rotate", clockwiseDegreesFromSignedSlider(rotation));
+}
+
+function applyRotation() {
+  keepCopyBackDecodingForOffAxisAngles();
+  addRotationOnTopOfFileMetadata();
+  updateAspect();
+  pushState();
+  scheduleSave();
+}
+
+function adoptRotationWrittenOutsideTheSlider() {
+  const clockwiseDegrees = mpv.getNumber("video-rotate");
+  if (!Number.isFinite(clockwiseDegrees)) return;
+  const signedDegrees = signedSliderDegreesFromClockwise(clockwiseDegrees);
+  const sameAngleAsSlider =
+    clockwiseDegreesFromSignedSlider(signedDegrees) ===
+    clockwiseDegreesFromSignedSlider(rotation);
+  if (sameAngleAsSlider) return;
+  rotation = signedDegrees;
+  const didSwitchDecoderToCopyBack = keepCopyBackDecodingForOffAxisAngles();
+  if (didSwitchDecoderToCopyBack) addRotationOnTopOfFileMetadata();
+  updateAspect();
+  pushState();
+  scheduleSave();
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -95,6 +150,17 @@ function panTo(u, v) {
   panX = 0.5 - u;
   panY = 0.5 - v;
   apply();
+}
+
+function rotateTo(degrees) {
+  if (!Number.isFinite(degrees)) return;
+  rotation = clampRotationToSliderRange(degrees);
+  applyRotation();
+  core.osd(`Rotation: ${rotation}°`);
+}
+
+function rotateBy(delta) {
+  rotateTo(rotation + delta);
 }
 
 function reset() {
@@ -164,6 +230,8 @@ event.on("iina.plugin-overlay-loaded", () => {
   overlay.onMessage("zoom", ({ delta }) => zoomBy(delta));
   overlay.onMessage("zoomTo", ({ zoom: z }) => zoomTo(z));
   overlay.onMessage("pan", ({ u, v }) => panTo(u, v));
+  overlay.onMessage("rotate", ({ delta }) => rotateBy(delta));
+  overlay.onMessage("rotateTo", ({ rotation: degrees }) => rotateTo(degrees));
   overlay.onMessage("reset", () => reset());
   overlay.onMessage("close", () => {
     minimapVisible = false;
@@ -175,11 +243,19 @@ event.on("iina.plugin-overlay-loaded", () => {
 
 event.on("iina.file-loaded", () => {
   updateAspect();
-  // Restore this file's saved zoom/pan; otherwise start unzoomed.
   const saved = getAllStates()[core.status.url];
   zoom = saved ? saved.zoom : 0;
   panX = saved ? saved.panX : 0;
   panY = saved ? saved.panY : 0;
+  rotation = saved && Number.isFinite(saved.rotation) ? clampRotationToSliderRange(saved.rotation) : 0;
   minimapVisible = zoom > 0;
   apply();
+  applyRotation();
+});
+
+event.on("mpv.video-rotate.changed", adoptRotationWrittenOutsideTheSlider);
+
+event.on("mpv.video-reconfig", () => {
+  updateAspect();
+  pushState();
 });

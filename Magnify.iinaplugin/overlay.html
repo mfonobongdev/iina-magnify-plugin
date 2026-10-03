@@ -62,7 +62,8 @@
     border-top: 1px solid rgba(255, 255, 255, 0.15);
   }
 
-  #zoomSlider {
+  #zoomSlider,
+  #rotateSlider {
     pointer-events: auto;
     -webkit-appearance: none;
     appearance: none;
@@ -75,7 +76,10 @@
     cursor: pointer;
   }
 
-  #zoomSlider::-webkit-slider-thumb {
+  #rotateSlider { flex: 1; width: auto; }
+
+  #zoomSlider::-webkit-slider-thumb,
+  #rotateSlider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
     width: 13px;
@@ -92,7 +96,8 @@
     padding: 5px 6px;
   }
 
-  #toolbar button {
+  #toolbar button,
+  #rotateRow button {
     pointer-events: auto;
     background: rgba(255, 255, 255, 0.1);
     border: none;
@@ -103,13 +108,32 @@
     font-size: 14px;
     line-height: 1;
     cursor: pointer;
+    flex-shrink: 0;
   }
 
-  #toolbar button:hover { background: rgba(255, 255, 255, 0.22); }
+  #toolbar button:hover,
+  #rotateRow button:hover { background: rgba(255, 255, 255, 0.22); }
+
+  #rotateRow {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px 7px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+  }
 
   #zoomLabel {
     flex: 1;
     text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  #rotateLabel {
+    flex-shrink: 0;
+    width: 42px;
+    text-align: right;
     color: rgba(255, 255, 255, 0.85);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -132,6 +156,12 @@
     <button id="btnReset" data-clickable title="Reset (0)">⟲</button>
     <button id="btnClose" data-clickable title="Hide (z)">✕</button>
   </div>
+  <div id="rotateRow">
+    <button id="rotateCounterclockwise" data-clickable title="Rotate counterclockwise">−</button>
+    <input id="rotateSlider" data-clickable type="range" min="-180" max="180" step="1" value="0" title="Rotation" />
+    <button id="rotateClockwise" data-clickable title="Rotate clockwise">+</button>
+    <span id="rotateLabel">0°</span>
+  </div>
 </div>
 
 <script>
@@ -140,8 +170,10 @@
   const viewport = document.getElementById("viewport");
   const zoomLabel = document.getElementById("zoomLabel");
   const zoomSlider = document.getElementById("zoomSlider");
+  const rotateLabel = document.getElementById("rotateLabel");
+  const rotateSlider = document.getElementById("rotateSlider");
 
-  let state = { zoom: 0, panX: 0, panY: 0, visible: false, aspect: 16 / 9 };
+  let state = { zoom: 0, panX: 0, panY: 0, rotation: 0, visible: false, aspect: 16 / 9 };
 
   iina.onMessage("state", (s) => {
     state = s;
@@ -170,6 +202,8 @@
 
     zoomLabel.textContent = `${scale.toFixed(1)}×`;
     zoomSlider.value = state.zoom;
+    rotateLabel.textContent = `${state.rotation}°`;
+    rotateSlider.value = state.rotation;
   }
 
   // ── Pan: drag the viewport, or click/drag anywhere in the frame ────────────
@@ -219,6 +253,16 @@
   );
   document.getElementById("btnClose").addEventListener("click", () =>
     iina.postMessage("close", {})
+  );
+
+  rotateSlider.addEventListener("input", () =>
+    iina.postMessage("rotateTo", { rotation: parseInt(rotateSlider.value, 10) })
+  );
+  document.getElementById("rotateClockwise").addEventListener("click", () =>
+    iina.postMessage("rotate", { delta: 1 })
+  );
+  document.getElementById("rotateCounterclockwise").addEventListener("click", () =>
+    iina.postMessage("rotate", { delta: -1 })
   );
 </script>
 </body>
