@@ -10,7 +10,7 @@ let panY = 0;
 let rotation = 0;
 let minimapVisible = false;
 let aspect = 16 / 9;
-let switchedThisWindowToCopyBack = false;
+let awaitingDecoderForRotation = false;
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
@@ -89,17 +89,49 @@ function clampRotationToSliderRange(degrees) {
   return Math.min(180, Math.max(-180, Math.round(degrees)));
 }
 
-function keepCopyBackDecodingForOffAxisAngles() {
-  if (switchedThisWindowToCopyBack) return false;
-  const clockwiseDegrees = clockwiseDegreesFromSignedSlider(rotation);
-  const angleIsMultipleOfNinety = clockwiseDegrees % 90 === 0;
-  if (angleIsMultipleOfNinety) return false;
+function decoderCanRotateBySingleDegrees(decoderName) {
+  return decoderName === "no" || decoderName.includes("copy");
+}
+
+function nameOfDecoderActuallyInUse() {
+  try {
+    return mpv.getString("hwdec-current") || "";
+  } catch {
+    return "";
+  }
+}
+
+function angleNeedsSingleDegreeRotation() {
+  return clockwiseDegreesFromSignedSlider(rotation) % 90 !== 0;
+}
+
+function retryRotationWhenDecoderIsReady() {
+  setTimeout(() => {
+    if (awaitingDecoderForRotation) finishRotationAfterDecoderChange();
+  }, 400);
+}
+
+function useDecoderThatCanRotateBySingleDegrees() {
+  if (!angleNeedsSingleDegreeRotation()) return;
   const hwdec = mpv.getString("hwdec") || "";
-  const canRotateBySingleDegrees = hwdec === "no" || hwdec.includes("copy");
-  if (canRotateBySingleDegrees) return false;
+  if (decoderCanRotateBySingleDegrees(hwdec)) return;
   mpv.set("hwdec", "auto-copy");
-  switchedThisWindowToCopyBack = true;
-  return true;
+  awaitingDecoderForRotation = true;
+  retryRotationWhenDecoderIsReady();
+}
+
+function finishRotationAfterDecoderChange() {
+  if (!awaitingDecoderForRotation) return;
+  const decoderInUse = nameOfDecoderActuallyInUse();
+  const hwdec = mpv.getString("hwdec") || "";
+  const stillHardwareWithoutCopy = decoderInUse !== "" && !decoderCanRotateBySingleDegrees(decoderInUse);
+  if (stillHardwareWithoutCopy && hwdec !== "no") {
+    mpv.set("hwdec", "no");
+    retryRotationWhenDecoderIsReady();
+    return;
+  }
+  awaitingDecoderForRotation = false;
+  addRotationOnTopOfFileMetadata();
 }
 
 function addRotationOnTopOfFileMetadata() {
@@ -107,7 +139,7 @@ function addRotationOnTopOfFileMetadata() {
 }
 
 function applyRotation() {
-  keepCopyBackDecodingForOffAxisAngles();
+  useDecoderThatCanRotateBySingleDegrees();
   addRotationOnTopOfFileMetadata();
   updateAspect();
   pushState();
@@ -115,6 +147,7 @@ function applyRotation() {
 }
 
 function adoptRotationWrittenOutsideTheSlider() {
+  if (awaitingDecoderForRotation) return;
   const clockwiseDegrees = mpv.getNumber("video-rotate");
   if (!Number.isFinite(clockwiseDegrees)) return;
   const signedDegrees = signedSliderDegreesFromClockwise(clockwiseDegrees);
@@ -123,8 +156,8 @@ function adoptRotationWrittenOutsideTheSlider() {
     clockwiseDegreesFromSignedSlider(rotation);
   if (sameAngleAsSlider) return;
   rotation = signedDegrees;
-  const didSwitchDecoderToCopyBack = keepCopyBackDecodingForOffAxisAngles();
-  if (didSwitchDecoderToCopyBack) addRotationOnTopOfFileMetadata();
+  useDecoderThatCanRotateBySingleDegrees();
+  addRotationOnTopOfFileMetadata();
   updateAspect();
   pushState();
   scheduleSave();
@@ -267,6 +300,7 @@ event.on("iina.file-loaded", () => {
 event.on("mpv.video-rotate.changed", adoptRotationWrittenOutsideTheSlider);
 
 event.on("mpv.video-reconfig", () => {
+  if (awaitingDecoderForRotation) finishRotationAfterDecoderChange();
   updateAspect();
   pushState();
 });
