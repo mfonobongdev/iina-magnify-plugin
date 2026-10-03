@@ -152,6 +152,16 @@ function panTo(u, v) {
   apply();
 }
 
+const PAN_STEP_OF_VIEW = 0.05;
+
+function panBy(stepsRight, stepsDown) {
+  if (!Number.isFinite(stepsRight) || !Number.isFinite(stepsDown)) return;
+  const fractionOfTheView = PAN_STEP_OF_VIEW / scale();
+  const u = 0.5 - panX + stepsRight * fractionOfTheView;
+  const v = 0.5 - panY + stepsDown * fractionOfTheView;
+  panTo(u, v);
+}
+
 function rotateTo(degrees) {
   if (!Number.isFinite(degrees)) return;
   rotation = clampRotationToSliderRange(degrees);
@@ -230,6 +240,7 @@ event.on("iina.plugin-overlay-loaded", () => {
   overlay.onMessage("zoom", ({ delta }) => zoomBy(delta));
   overlay.onMessage("zoomTo", ({ zoom: z }) => zoomTo(z));
   overlay.onMessage("pan", ({ u, v }) => panTo(u, v));
+  overlay.onMessage("panBy", ({ stepsRight, stepsDown }) => panBy(stepsRight, stepsDown));
   overlay.onMessage("rotate", ({ delta }) => rotateBy(delta));
   overlay.onMessage("rotateTo", ({ rotation: degrees }) => rotateTo(degrees));
   overlay.onMessage("reset", () => reset());

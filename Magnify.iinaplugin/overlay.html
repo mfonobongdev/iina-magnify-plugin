@@ -57,6 +57,28 @@
 
   #viewport.dragging { cursor: grabbing; }
 
+  .pan-arrow {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    padding: 0;
+    border: none;
+    border-radius: 3px;
+    background: rgba(20, 20, 20, 0.9);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 9px;
+    line-height: 14px;
+    text-align: center;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 2;
+  }
+
+  .pan-arrow.against-edge {
+    opacity: 0.3;
+    cursor: default;
+  }
+
   #sliderRow {
     padding: 7px 8px 2px;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
@@ -145,6 +167,10 @@
 <div id="magnifier">
   <div id="frame" data-clickable>
     <div id="viewport" data-clickable></div>
+    <button id="panUp" class="pan-arrow" type="button" data-clickable title="Pan up">↑</button>
+    <button id="panDown" class="pan-arrow" type="button" data-clickable title="Pan down">↓</button>
+    <button id="panLeft" class="pan-arrow" type="button" data-clickable title="Pan left">←</button>
+    <button id="panRight" class="pan-arrow" type="button" data-clickable title="Pan right">→</button>
   </div>
   <div id="sliderRow">
     <input id="zoomSlider" data-clickable type="range" min="0" max="4" step="0.05" value="0" title="Zoom" />
@@ -172,6 +198,11 @@
   const zoomSlider = document.getElementById("zoomSlider");
   const rotateLabel = document.getElementById("rotateLabel");
   const rotateSlider = document.getElementById("rotateSlider");
+  const panUp = document.getElementById("panUp");
+  const panDown = document.getElementById("panDown");
+  const panLeft = document.getElementById("panLeft");
+  const panRight = document.getElementById("panRight");
+  const PAN_ARROW_SIZE = 14;
 
   let state = { zoom: 0, panX: 0, panY: 0, rotation: 0, visible: false, aspect: 16 / 9 };
 
@@ -195,10 +226,28 @@
     const left = (0.5 - state.panX - size / 2) * frameW;
     const top = (0.5 - state.panY - size / 2) * frameH;
 
-    viewport.style.width = `${size * frameW}px`;
-    viewport.style.height = `${size * frameH}px`;
+    const viewW = size * frameW;
+    const viewH = size * frameH;
+    viewport.style.width = `${viewW}px`;
+    viewport.style.height = `${viewH}px`;
     viewport.style.left = `${left}px`;
     viewport.style.top = `${top}px`;
+
+    placePanArrow(panUp, left + viewW / 2 - PAN_ARROW_SIZE / 2, top - PAN_ARROW_SIZE, frameW, frameH);
+    placePanArrow(panDown, left + viewW / 2 - PAN_ARROW_SIZE / 2, top + viewH, frameW, frameH);
+    placePanArrow(panLeft, left - PAN_ARROW_SIZE, top + viewH / 2 - PAN_ARROW_SIZE / 2, frameW, frameH);
+    placePanArrow(panRight, left + viewW, top + viewH / 2 - PAN_ARROW_SIZE / 2, frameW, frameH);
+
+    const panLimit = Math.max(0, 0.5 - 1 / (2 * scale));
+    const edgeSlack = 0.0001;
+    const againstLeftEdge = state.panX >= panLimit - edgeSlack;
+    const againstRightEdge = state.panX <= -panLimit + edgeSlack;
+    const againstTopEdge = state.panY >= panLimit - edgeSlack;
+    const againstBottomEdge = state.panY <= -panLimit + edgeSlack;
+    panLeft.classList.toggle("against-edge", againstLeftEdge);
+    panRight.classList.toggle("against-edge", againstRightEdge);
+    panUp.classList.toggle("against-edge", againstTopEdge);
+    panDown.classList.toggle("against-edge", againstBottomEdge);
 
     zoomLabel.textContent = `${scale.toFixed(1)}×`;
     zoomSlider.value = state.zoom;
@@ -215,7 +264,55 @@
     iina.postMessage("pan", { u, v });
   }
 
+  function placePanArrow(button, x, y, frameW, frameH) {
+    const clampedX = Math.min(frameW - PAN_ARROW_SIZE, Math.max(0, x));
+    const clampedY = Math.min(frameH - PAN_ARROW_SIZE, Math.max(0, y));
+    button.style.left = `${clampedX}px`;
+    button.style.top = `${clampedY}px`;
+  }
+
+  function holdPanArrow(button, stepsRight, stepsDown) {
+    let arrowIsHeld = false;
+    let delayBeforeRepeat = null;
+    let repeatTimer = null;
+
+    function releaseArrow() {
+      arrowIsHeld = false;
+      clearTimeout(delayBeforeRepeat);
+      clearInterval(repeatTimer);
+    }
+
+    function sendPanStep() {
+      if (button.classList.contains("against-edge")) return;
+      iina.postMessage("panBy", { stepsRight, stepsDown });
+    }
+
+    function pressArrow(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (arrowIsHeld) return;
+      arrowIsHeld = true;
+      if (e.pointerId !== undefined) button.setPointerCapture(e.pointerId);
+      sendPanStep();
+      delayBeforeRepeat = setTimeout(() => {
+        repeatTimer = setInterval(sendPanStep, 80);
+      }, 280);
+    }
+
+    button.addEventListener("pointerdown", pressArrow);
+    button.addEventListener("mousedown", pressArrow);
+    button.addEventListener("pointerup", releaseArrow);
+    button.addEventListener("pointercancel", releaseArrow);
+    document.addEventListener("mouseup", releaseArrow);
+  }
+
+  holdPanArrow(panUp, 0, -1);
+  holdPanArrow(panDown, 0, 1);
+  holdPanArrow(panLeft, -1, 0);
+  holdPanArrow(panRight, 1, 0);
+
   frame.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".pan-arrow")) return;
     e.preventDefault();
     viewport.classList.add("dragging");
     panToEvent(e);
