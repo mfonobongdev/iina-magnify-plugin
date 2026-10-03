@@ -10,7 +10,8 @@ let panY = 0;
 let rotation = 0;
 let minimapVisible = false;
 let aspect = 16 / 9;
-let awaitingDecoderForRotation = false;
+let decoderChangeThisWindowIsWaitingFor = "none";
+let ignoreRotationWritesWeJustMade = false;
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
@@ -105,49 +106,81 @@ function angleNeedsSingleDegreeRotation() {
   return clockwiseDegreesFromSignedSlider(rotation) % 90 !== 0;
 }
 
-function retryRotationWhenDecoderIsReady() {
+const WAIT_FOR_THE_DECODER_TO_CHANGE_MS = 450;
+const IGNORE_OUR_ROTATION_WRITE_MS = 300;
+
+function addRotationOnTopOfFileMetadata() {
+  const degrees = clockwiseDegreesFromSignedSlider(rotation);
+  ignoreRotationWritesWeJustMade = true;
+  const alreadySetToThisAngle = mpv.getNumber("video-rotate") === degrees;
+  if (alreadySetToThisAngle) mpv.set("video-rotate", degrees === 0 ? 1 : 0);
+  mpv.set("video-rotate", degrees);
   setTimeout(() => {
-    if (awaitingDecoderForRotation) finishRotationAfterDecoderChange();
-  }, 400);
+    ignoreRotationWritesWeJustMade = false;
+  }, IGNORE_OUR_ROTATION_WRITE_MS);
+}
+
+function switchThisWindowToDecoder(hwdec) {
+  mpv.set("hwdec", hwdec);
+  decoderChangeThisWindowIsWaitingFor = hwdec === "no" ? "software" : "copy-back";
+  setTimeout(() => finishRotationAfterDecoderChange(true), WAIT_FOR_THE_DECODER_TO_CHANGE_MS);
 }
 
 function useDecoderThatCanRotateBySingleDegrees() {
-  if (!angleNeedsSingleDegreeRotation()) return;
+  if (decoderChangeThisWindowIsWaitingFor !== "none") return;
   const hwdec = mpv.getString("hwdec") || "";
-  if (decoderCanRotateBySingleDegrees(hwdec)) return;
-  mpv.set("hwdec", "auto-copy");
-  awaitingDecoderForRotation = true;
-  retryRotationWhenDecoderIsReady();
-}
-
-function finishRotationAfterDecoderChange() {
-  if (!awaitingDecoderForRotation) return;
-  const decoderInUse = nameOfDecoderActuallyInUse();
-  const hwdec = mpv.getString("hwdec") || "";
-  const stillHardwareWithoutCopy = decoderInUse !== "" && !decoderCanRotateBySingleDegrees(decoderInUse);
-  if (stillHardwareWithoutCopy && hwdec !== "no") {
-    mpv.set("hwdec", "no");
-    retryRotationWhenDecoderIsReady();
+  const requestedDecoderCanRotateBySingleDegrees = decoderCanRotateBySingleDegrees(hwdec);
+  if (requestedDecoderCanRotateBySingleDegrees) {
+    switchThisWindowToDecoder("no");
     return;
   }
-  awaitingDecoderForRotation = false;
-  addRotationOnTopOfFileMetadata();
+  switchThisWindowToDecoder("auto-copy");
 }
 
-function addRotationOnTopOfFileMetadata() {
-  mpv.set("video-rotate", clockwiseDegreesFromSignedSlider(rotation));
+function finishRotationAfterDecoderChange(decoderHadTimeToChange) {
+  if (decoderChangeThisWindowIsWaitingFor === "none") return;
+  if (!angleNeedsSingleDegreeRotation()) {
+    decoderChangeThisWindowIsWaitingFor = "none";
+    return;
+  }
+  const decoderInUseCanRotateBySingleDegrees = decoderCanRotateBySingleDegrees(nameOfDecoderActuallyInUse());
+  if (decoderInUseCanRotateBySingleDegrees) {
+    decoderChangeThisWindowIsWaitingFor = "none";
+    addRotationOnTopOfFileMetadata();
+    return;
+  }
+  const decoderInUse = nameOfDecoderActuallyInUse();
+  const softwareDecodeIsRunning = decoderInUse === "" || decoderInUse === "no";
+  if (decoderChangeThisWindowIsWaitingFor === "software" && softwareDecodeIsRunning) {
+    decoderChangeThisWindowIsWaitingFor = "none";
+    addRotationOnTopOfFileMetadata();
+    return;
+  }
+  if (decoderChangeThisWindowIsWaitingFor === "copy-back") {
+    if (!decoderHadTimeToChange) return;
+    switchThisWindowToDecoder("no");
+    return;
+  }
+  if (!decoderHadTimeToChange) return;
+  decoderChangeThisWindowIsWaitingFor = "none";
+  addRotationOnTopOfFileMetadata();
 }
 
 function applyRotation() {
-  useDecoderThatCanRotateBySingleDegrees();
-  addRotationOnTopOfFileMetadata();
+  const decoderInUseCanRotateBySingleDegrees = decoderCanRotateBySingleDegrees(nameOfDecoderActuallyInUse());
+  if (!angleNeedsSingleDegreeRotation() || decoderInUseCanRotateBySingleDegrees) {
+    decoderChangeThisWindowIsWaitingFor = "none";
+    addRotationOnTopOfFileMetadata();
+  } else {
+    useDecoderThatCanRotateBySingleDegrees();
+  }
   updateAspect();
   pushState();
   scheduleSave();
 }
 
 function adoptRotationWrittenOutsideTheSlider() {
-  if (awaitingDecoderForRotation) return;
+  if (ignoreRotationWritesWeJustMade || decoderChangeThisWindowIsWaitingFor !== "none") return;
   const clockwiseDegrees = mpv.getNumber("video-rotate");
   if (!Number.isFinite(clockwiseDegrees)) return;
   const signedDegrees = signedSliderDegreesFromClockwise(clockwiseDegrees);
@@ -156,8 +189,12 @@ function adoptRotationWrittenOutsideTheSlider() {
     clockwiseDegreesFromSignedSlider(rotation);
   if (sameAngleAsSlider) return;
   rotation = signedDegrees;
-  useDecoderThatCanRotateBySingleDegrees();
-  addRotationOnTopOfFileMetadata();
+  const decoderInUseCanRotateBySingleDegrees = decoderCanRotateBySingleDegrees(nameOfDecoderActuallyInUse());
+  if (!angleNeedsSingleDegreeRotation() || decoderInUseCanRotateBySingleDegrees) {
+    addRotationOnTopOfFileMetadata();
+  } else {
+    useDecoderThatCanRotateBySingleDegrees();
+  }
   updateAspect();
   pushState();
   scheduleSave();
@@ -300,7 +337,7 @@ event.on("iina.file-loaded", () => {
 event.on("mpv.video-rotate.changed", adoptRotationWrittenOutsideTheSlider);
 
 event.on("mpv.video-reconfig", () => {
-  if (awaitingDecoderForRotation) finishRotationAfterDecoderChange();
+  finishRotationAfterDecoderChange(false);
   updateAspect();
   pushState();
 });

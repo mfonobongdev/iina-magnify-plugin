@@ -32,11 +32,26 @@
 
   #magnifier.visible { display: block; }
 
+  #navigator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 6px 8px;
+  }
+
+  #zoomBoxBetweenSideArrows {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+  }
+
   /* Wireframe navigator: the full video frame in miniature */
   #frame {
     position: relative;
-    width: 100%;
-    margin-bottom: 14px;
+    flex: 1;
+    min-width: 0;
     background:
       linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
@@ -59,49 +74,24 @@
   #viewport.dragging { cursor: grabbing; }
 
   .pan-arrow {
-    position: absolute;
-    width: 14px;
-    height: 14px;
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
     padding: 0;
     border: none;
     border-radius: 3px;
-    background: rgba(20, 20, 20, 0.9);
+    background: rgba(255, 255, 255, 0.12);
     color: rgba(255, 255, 255, 0.92);
-    font-size: 9px;
-    line-height: 14px;
+    font-size: 10px;
+    line-height: 16px;
     text-align: center;
     cursor: pointer;
     pointer-events: auto;
-    z-index: 2;
   }
 
   .pan-arrow.against-edge {
     opacity: 0.3;
     cursor: default;
-  }
-
-  #panUp {
-    top: 3px;
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  #panDown {
-    bottom: 0;
-    left: 50%;
-    transform: translate(-50%, 50%);
-  }
-
-  #panLeft {
-    left: 3px;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-
-  #panRight {
-    right: 3px;
-    top: 50%;
-    transform: translateY(-50%);
   }
 
   #sliderRow {
@@ -123,7 +113,16 @@
     cursor: pointer;
   }
 
-  #rotateSlider { flex: 1; width: auto; }
+  #rotationSliderWithDegree {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  #rotateSlider { width: 100%; }
 
   #zoomSlider::-webkit-slider-thumb,
   #rotateSlider::-webkit-slider-thumb {
@@ -163,9 +162,9 @@
 
   #rotateRow {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: 4px;
-    padding: 2px 6px 7px;
+    padding: 4px 6px 7px;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
   }
 
@@ -178,24 +177,27 @@
   }
 
   #rotateLabel {
-    flex-shrink: 0;
-    width: 42px;
-    text-align: right;
-    color: rgba(255, 255, 255, 0.85);
-    font-size: 11px;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 10px;
+    line-height: 1;
     font-variant-numeric: tabular-nums;
+    pointer-events: none;
   }
 </style>
 </head>
 <body>
 
 <div id="magnifier">
-  <div id="frame" data-clickable>
-    <div id="viewport" data-clickable></div>
+  <div id="navigator">
     <button id="panUp" class="pan-arrow" type="button" data-clickable title="Pan up">↑</button>
+    <div id="zoomBoxBetweenSideArrows">
+      <button id="panLeft" class="pan-arrow" type="button" data-clickable title="Pan left">←</button>
+      <div id="frame" data-clickable>
+        <div id="viewport" data-clickable></div>
+      </div>
+      <button id="panRight" class="pan-arrow" type="button" data-clickable title="Pan right">→</button>
+    </div>
     <button id="panDown" class="pan-arrow" type="button" data-clickable title="Pan down">↓</button>
-    <button id="panLeft" class="pan-arrow" type="button" data-clickable title="Pan left">←</button>
-    <button id="panRight" class="pan-arrow" type="button" data-clickable title="Pan right">→</button>
   </div>
   <div id="sliderRow">
     <input id="zoomSlider" data-clickable type="range" min="0" max="4" step="0.05" value="0" title="Zoom" />
@@ -209,9 +211,11 @@
   </div>
   <div id="rotateRow">
     <button id="rotateCounterclockwise" data-clickable title="Rotate counterclockwise">−</button>
-    <input id="rotateSlider" data-clickable type="range" min="-180" max="180" step="1" value="0" title="Rotation" />
+    <div id="rotationSliderWithDegree">
+      <span id="rotateLabel">0°</span>
+      <input id="rotateSlider" data-clickable type="range" min="-180" max="180" step="1" value="0" title="Rotation" />
+    </div>
     <button id="rotateClockwise" data-clickable title="Rotate clockwise">+</button>
-    <span id="rotateLabel">0°</span>
   </div>
 </div>
 
@@ -364,9 +368,11 @@
     iina.postMessage("close", {})
   );
 
-  rotateSlider.addEventListener("input", () =>
-    iina.postMessage("rotateTo", { rotation: parseInt(rotateSlider.value, 10) })
-  );
+  rotateSlider.addEventListener("input", () => {
+    const degrees = parseInt(rotateSlider.value, 10);
+    rotateLabel.textContent = `${degrees}°`;
+    iina.postMessage("rotateTo", { rotation: degrees });
+  });
   document.getElementById("rotateClockwise").addEventListener("click", () =>
     iina.postMessage("rotate", { delta: 1 })
   );
