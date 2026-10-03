@@ -7,7 +7,7 @@ VLC-style interactive zoom for IINA. Magnify the video and pan around it with a 
 - Press **`=`** / **`-`** to zoom in / out (up to 16×), **`0`** to reset
 - Press **`z`** to toggle the navigator panel
 - Drag the highlighted rectangle in the navigator (or click anywhere in it) to pan
-- Arrows on the four edges of that rectangle pan by 5% of the view. Hold an arrow to keep moving
+- Arrows fixed to the four edges of the navigator pan by 5% of the view. Hold an arrow to keep moving
 - Scroll over the navigator to zoom
 - Toolbar with zoom in/out, live zoom factor, reset, and close
 - Clicks outside the navigator pass through to the video as normal
@@ -30,7 +30,7 @@ Or download `Magnify.iinaplgz` from the [latest release](https://github.com/mfon
 |---|---|
 | Zoom in / out | Press `=` / `-`, click **+** / **−** in the navigator, or scroll over it |
 | Pan | Drag the blue rectangle in the navigator, or click where you want to look |
-| Pan precisely | Click or hold an arrow on an edge of the blue rectangle (5% of the view) |
+| Pan precisely | Click or hold an arrow on an edge of the navigator (5% of the view) |
 | Reset zoom | Press `0` or click **⟲** |
 | Rotate | Drag the rotation slider under the zoom controls, or click **−** / **+** beside it (1°) |
 | Show/hide navigator | Press `z` or click **✕** (also in the Plugin menu) |
